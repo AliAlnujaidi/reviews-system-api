@@ -1,0 +1,99 @@
+version: '3.9'
+services:
+  mongodb-replica-set-key-generator:
+    image: mongo:4
+    container_name: mongo_key
+    command: bash -c "openssl rand -base64 756 > ./key/replica.key && chmod 400 ./key/replica.key && chown 999:999 ./key/replica.key"
+    volumes:
+      - mongo_replica_set_key:/key
+      - mongodb_data_key_generator:/data/db
+      - mongodb_config_key_generator:/data/configdb
+
+  mongodb1:
+    image: mongo:4
+    container_name: bkf_backend_mongodb1
+    volumes:
+      - mongodb_data_1:/data/db
+      - mongodb_config_1:/data/configdb
+      - mongo_replica_set_key:/key
+      #- ./shell-scripts/copy.production.db.into.local.sh:/scripts/copy.production.db.into.local.sh
+    env_file:
+      - ./env/mongodb.env
+    ports:
+      - 30000:30000
+    restart: always
+    command: mongod --replSet bkf0 --bind_ip_all --keyFile /key/replica.key --port 30000 --wiredTigerCacheSizeGB 1.5
+    depends_on:
+      - mongodb-replica-set-key-generator
+
+  mongodb2:
+    image: mongo:4
+    container_name: bkf_backend_mongodb2
+    volumes:
+      - mongodb_data_2:/data/db
+      - mongodb_config_2:/data/configdb
+      - mongo_replica_set_key:/key
+    ports:
+      - 30001:30001
+    restart: always
+    command: mongod --replSet bkf0 --bind_ip_all --keyFile /key/replica.key --port 30001 --wiredTigerCacheSizeGB 1.5
+    depends_on:
+      - mongodb-replica-set-key-generator
+
+  mongodb3:
+    image: mongo:4
+    container_name: bkf_backend_mongodb3
+    volumes:
+      - mongodb_data_3:/data/db
+      - mongodb_config_3:/data/configdb
+      - mongo_replica_set_key:/key
+    ports:
+      - 30002:30002
+    restart: always
+    command: mongod --replSet bkf0 --bind_ip_all --keyFile /key/replica.key --port 30002 --wiredTigerCacheSizeGB 1.5
+    depends_on:
+      - mongodb-replica-set-key-generator
+
+  mongodb-setup:
+    image: mongo:4
+    container_name: bkf_backend_mongodb_setup
+    volumes:
+      - mongodb_setup_data:/data/db
+      - mongodb_setup_config:/data/configdb
+      - ./shell-scripts/mongodb.replica.set.setup.sh:/scripts/mongodb.replica.set.setup.sh
+    env_file:
+      - ./env/mongodb.env
+    restart: on-failure
+    command: bash /scripts/mongodb.replica.set.setup.sh
+    depends_on:
+      - mongodb1
+      - mongodb2
+      - mongodb3
+
+  api:
+    build: ./backend
+    ports:
+      - 4000:3000
+    env_file: ./backend/.env
+    depends_on:
+      - mongodb1
+      - mongodb2
+      - mongodb3
+
+volumes:
+  # elasticsearch:
+  mongo_replica_set_key:
+  mongodb_config_key_generator:
+  mongodb_data_key_generator:
+
+  mongodb_config_1:
+  mongodb_data_1:
+
+  mongodb_config_2:
+  mongodb_data_2:
+
+  mongodb_config_3:
+  mongodb_data_3:
+
+  mongodb_setup_config:
+  mongodb_setup_data:
